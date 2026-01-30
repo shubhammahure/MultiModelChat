@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+
+​import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     styled,
     Alert,
@@ -12,6 +13,7 @@ import {
     AppBar,
     Toolbar,
     Avatar,
+    CircularProgress,
 } from '@mui/material';
 import { useForm, Controller } from 'react-hook-form';
 import { useInsight } from '@semoss/sdk-react';
@@ -21,6 +23,7 @@ import SendIcon from '@mui/icons-material/Send';
 import MenuIcon from '@mui/icons-material/Menu';
 import StopIcon from '@mui/icons-material/Stop';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import logoIcon from '@/assets/img/multichatbot-logo.svg';
 import ChatbotLogo from '@/assets/img/chatbot.jpg';
 
@@ -29,7 +32,24 @@ const StyledMainContainer = styled(Box)(({ theme }) => ({
     flexDirection: 'column',
     height: '100vh',
     backgroundColor: theme.palette.background.default,
-    overflow: 'hidden',
+    // Allow a single horizontal scrollbar for the entire app when content overflows
+    overflowX: 'auto',
+    overflowY: 'hidden',
+    // Custom scrollbar styling for the main container
+    '&::-webkit-scrollbar': {
+        height: '12px',
+    },
+    '&::-webkit-scrollbar-track': {
+        backgroundColor: theme.palette.background.default,
+    },
+    '&::-webkit-scrollbar-thumb': {
+        backgroundColor: theme.palette.divider,
+        borderRadius: '6px',
+        '&:hover': {
+            backgroundColor: theme.palette.action.hover,
+        },
+    },
+    scrollbarColor: `${theme.palette.divider} ${theme.palette.background.default}`,
 }));
 
 const StyledTopBar = styled(AppBar)(({ theme }) => ({
@@ -61,33 +81,20 @@ const StyledContentArea = styled(Box)(({ theme }) => ({
 const StyledComparisonContainer = styled(Box)(({ theme }) => ({
     flex: 1,
     display: 'flex',
-    overflowX: 'auto',
+    // Let the outer container (StyledMainContainer) handle horizontal scrolling.
+    overflowX: 'visible',
     overflowY: 'auto',
     padding: theme.spacing(3),
     marginLeft: '280px',
-    // “Scrollable right-to-left” while keeping each panel’s text normal.
-    direction: 'rtl',
-    '&::-webkit-scrollbar': {
-        height: '8px',
-        width: '8px',
-    },
-    '&::-webkit-scrollbar-track': {
-        backgroundColor: theme.palette.background.default,
-    },
-    '&::-webkit-scrollbar-thumb': {
-        backgroundColor: theme.palette.divider,
-        borderRadius: '4px',
-        '&:hover': {
-            backgroundColor: theme.palette.action.hover,
-        },
-    },
+    direction: 'ltr',
 }));
 
 const StyledPanelsRow = styled(Box)(({ theme }) => ({
     display: 'flex',
     gap: theme.spacing(2),
     direction: 'ltr',
-    width: 'fit-content',
+    // Ensure the panels row can expand horizontally beyond viewport width
+    minWidth: 'max-content',
 }));
 
 const StyledInputContainer = styled(Box)(({ theme }) => ({
@@ -146,6 +153,18 @@ const StyledSendButton = styled(IconButton)(({ theme }) => ({
     },
 }));
 
+const StyledProButton = styled(IconButton)(({ theme }) => ({
+    backgroundColor: theme.palette.secondary.main,
+    color: theme.palette.secondary.contrastText,
+    '&:hover': {
+        backgroundColor: theme.palette.secondary.dark,
+    },
+    '&:disabled': {
+        backgroundColor: theme.palette.action.disabledBackground,
+        color: theme.palette.action.disabled,
+    },
+}));
+
 export interface LLMModel {
     database_name?: string;
     database_id?: string;
@@ -182,6 +201,7 @@ export const MultiModelChatPage = () => {
     const [error, setError] = useState('');
     const [copySuccess, setCopySuccess] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
+    const [isEnhancing, setIsEnhancing] = useState(false);
 
     // Model Catalog and selected models
     const [availableModels, setAvailableModels] = useState<LLMModel[]>([]);
@@ -195,7 +215,7 @@ export const MultiModelChatPage = () => {
         [turns]
     );
 
-    const { control, handleSubmit, reset } = useForm({
+    const { control, handleSubmit, reset, setValue, getValues } = useForm({
         defaultValues: {
             MESSAGE: '',
         },
@@ -809,14 +829,74 @@ export const MultiModelChatPage = () => {
                                     <StopIcon />
                                 </StyledSendButton>
                             ) : (
-                                <StyledSendButton
-                                    type="submit"
-                                    disabled={selectedModels.length === 0}
-                                    size="large"
-                                    title="Send"
-                                >
-                                    <SendIcon />
-                                </StyledSendButton>
+                                <>
+                                    <StyledProButton
+                                        onClick={async () => {
+                                            const current = (getValues() as any).MESSAGE || '';
+                                            if (!current.trim()) return;
+
+                                            setIsEnhancing(true);
+                                            try {
+                                                // choose an engine to run the LLM pixel: prefer first selected model, fallback to first available
+                                                const engine = selectedModels[0]?.database_id || availableModels[0]?.database_id;
+                                                if (!engine) {
+                                                    throw new Error('No LLM engine available to enhance prompt');
+                                                }
+
+                                                // Build an instruction that asks the model to enhance the user's prompt and
+                                                // return only the enhanced prompt (no explanation).
+                                                const enhancerInstruction = [
+                                                    'You are a prompt engineering assistant. Improve the user prompt to be specific, unambiguous, and provide any necessary context or format instructions.\n',
+                                                    'Requirements:',
+                                                    '- Produce a single enhanced prompt the user can send to an LLM',
+                                                    '- Do NOT include explanation or analysis, only the improved prompt',
+                                                    '- Keep it concise and actionable',
+                                                    '',
+                                                    `User prompt:\n${current}`,
+                                                ].join('\n');
+
+                                                const pixel = `LLM(engine="${engine}" , command=["${enhancerInstruction.replace(/"/g, '\\"')}` + `"], paramValues=[temperature=0.0])`;
+
+                                                const llmResponse = await actions.run<{ response: string }>(pixel);
+                                                const { output: llmOutput, operationType: llmOperationType } = llmResponse.pixelReturn[0];
+
+                                                if (llmOperationType.indexOf('ERROR') > -1) {
+                                                    throw new Error(
+                                                        typeof llmOutput === 'string'
+                                                            ? llmOutput
+                                                            : llmOutput?.response || 'Unknown error from enhancer LLM'
+                                                    );
+                                                }
+
+                                                const enhanced = (llmOutput?.response || llmOutput || '').toString();
+                                                if (enhanced) setValue('MESSAGE', enhanced);
+                                            } catch (e) {
+                                                console.error('Pro prompt enhancer error', e);
+                                            } finally {
+                                                setIsEnhancing(false);
+                                            }
+                                        }}
+                                        size="large"
+                                        title="Pro prompt"
+                                        disabled={selectedModels.length === 0 || isEnhancing}
+                                        aria-busy={isEnhancing}
+                                    >
+                                        {isEnhancing ? (
+                                            <CircularProgress color="inherit" size={20} />
+                                        ) : (
+                                            <AutoFixHighIcon />
+                                        )}
+                                    </StyledProButton>
+
+                                    <StyledSendButton
+                                        type="submit"
+                                        disabled={selectedModels.length === 0}
+                                        size="large"
+                                        title="Send"
+                                    >
+                                        <SendIcon />
+                                    </StyledSendButton>
+                                </>
                             )}
                         </StyledInputWrapper>
                     </form>
