@@ -12,6 +12,7 @@ import {
 } from '@mui/material';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import CloseIcon from '@mui/icons-material/Close';
 import { Markdown } from '@/components/common';
 import { LLMModel } from '@/pages/MultiModelChatPage';
 
@@ -61,6 +62,7 @@ interface ModelComparisonColumnProps {
     error: string | null;
     onCopy: () => void;
     onRerun: () => void;
+    onClose?: () => void;
 }
 
 export const ModelComparisonColumn: React.FC<ModelComparisonColumnProps> = ({
@@ -72,6 +74,7 @@ export const ModelComparisonColumn: React.FC<ModelComparisonColumnProps> = ({
     error,
     onCopy,
     onRerun,
+    onClose,
 }) => {
     const handleCopy = async () => {
         if (response) {
@@ -93,6 +96,11 @@ export const ModelComparisonColumn: React.FC<ModelComparisonColumnProps> = ({
                         sx={{ mt: 0.5 }}
                     />
                 </Box>
+                {onClose && (
+                    <IconButton size="small" onClick={onClose} sx={{ color: 'text.secondary' }}>
+                        <CloseIcon fontSize="small" />
+                    </IconButton>
+                )}
             </StyledHeader>
 
             {question && (

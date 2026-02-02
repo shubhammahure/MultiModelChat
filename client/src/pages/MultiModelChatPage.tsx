@@ -33,18 +33,19 @@ const StyledMainContainer = styled(Box)(({ theme }) => ({
     height: '100vh',
     backgroundColor: theme.palette.background.default,
     // Allow a single horizontal scrollbar for the entire app when content overflows
-    overflowX: 'auto',
+    overflowX: 'hidden',
     overflowY: 'hidden',
-    // Custom scrollbar styling for the main container
+    // Custom scrollbar styling
     '&::-webkit-scrollbar': {
-        height: '12px',
+        height: '10px',
+        width: '10px',
     },
     '&::-webkit-scrollbar-track': {
         backgroundColor: theme.palette.background.default,
     },
     '&::-webkit-scrollbar-thumb': {
         backgroundColor: theme.palette.divider,
-        borderRadius: '6px',
+        borderRadius: '5px',
         '&:hover': {
             backgroundColor: theme.palette.action.hover,
         },
@@ -78,15 +79,42 @@ const StyledContentArea = styled(Box)(({ theme }) => ({
     position: 'relative',
 }));
 
-const StyledComparisonContainer = styled(Box)(({ theme }) => ({
+const StyledComparisonContainer = styled(Box, {
+    shouldForwardProp: (prop) => prop !== 'sidebarOpen',
+})<{ sidebarOpen?: boolean }>(({ theme, sidebarOpen }) => ({
     flex: 1,
     display: 'flex',
-    // Let the outer container (StyledMainContainer) handle horizontal scrolling.
-    overflowX: 'visible',
+    flexDirection: 'column',
+    overflowX: 'auto',
     overflowY: 'auto',
     padding: theme.spacing(3),
-    marginLeft: '280px',
+    marginLeft: sidebarOpen ? '280px' : '0',
+    // Position the horizontal scrollbar above the input container
+    marginBottom: '140px',
+    paddingBottom: theme.spacing(2),
+    transition: theme.transitions.create(['margin', 'padding'], {
+        easing: theme.transitions.easing.sharp,
+        duration: theme.transitions.duration.leavingScreen,
+    }),
     direction: 'ltr',
+    // Prominent horizontal scrollbar for easy dragging
+    '&::-webkit-scrollbar': {
+        height: '14px',
+        width: '10px',
+    },
+    '&::-webkit-scrollbar-track': {
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        borderRadius: '10px',
+    },
+    '&::-webkit-scrollbar-thumb': {
+        backgroundColor: theme.palette.primary.main,
+        borderRadius: '10px',
+        border: '3px solid transparent',
+        backgroundClip: 'content-box',
+        '&:hover': {
+            backgroundColor: theme.palette.primary.dark,
+        },
+    },
 }));
 
 const StyledPanelsRow = styled(Box)(({ theme }) => ({
@@ -97,7 +125,9 @@ const StyledPanelsRow = styled(Box)(({ theme }) => ({
     minWidth: 'max-content',
 }));
 
-const StyledInputContainer = styled(Box)(({ theme }) => ({
+const StyledInputContainer = styled(Box, {
+    shouldForwardProp: (prop) => prop !== 'sidebarOpen',
+})<{ sidebarOpen?: boolean }>(({ theme, sidebarOpen }) => ({
     position: 'fixed',
     bottom: 0,
     left: 0,
@@ -105,8 +135,14 @@ const StyledInputContainer = styled(Box)(({ theme }) => ({
     backgroundColor: theme.palette.background.paper,
     borderTop: `1px solid ${theme.palette.divider}`,
     padding: theme.spacing(2),
-    paddingLeft: `calc(280px + ${theme.spacing(2)})`,
+    paddingLeft: sidebarOpen
+        ? `calc(280px + ${theme.spacing(2)})`
+        : theme.spacing(2),
     zIndex: theme.zIndex.drawer + 1,
+    transition: theme.transitions.create('padding-left', {
+        easing: theme.transitions.easing.sharp,
+        duration: theme.transitions.duration.leavingScreen,
+    }),
 }));
 
 const StyledInputWrapper = styled(Box)(({ theme }) => ({
@@ -232,7 +268,7 @@ export const MultiModelChatPage = () => {
     ): Record<string, ModelResponse> => {
         const initial: Record<string, ModelResponse> = {};
         models.forEach((model) => {
-            const modelId = model.database_id || '';
+            const modelId = model.database_id || model.database_name || '';
             if (!modelId) return;
             initial[modelId] = {
                 model,
@@ -256,7 +292,7 @@ export const MultiModelChatPage = () => {
                           modelResponses: Object.fromEntries(
                               Object.entries(t.modelResponses).map(([k, v]) => [
                                   k,
-                                  { ...v, isLoading: false },
+                                  { ...(v as ModelResponse), isLoading: false },
                               ])
                           ),
                       }
@@ -309,7 +345,7 @@ export const MultiModelChatPage = () => {
             const snapshotModels = [...selectedModels];
             const tempSnapshot: Record<string, number> = {};
             snapshotModels.forEach((m) => {
-                const modelId = m.database_id || '';
+                const modelId = m.database_id || m.database_name || '';
                 if (!modelId) return;
                 tempSnapshot[modelId] =
                     modelTemperatures[modelId] ?? defaultTemperature;
@@ -333,7 +369,7 @@ export const MultiModelChatPage = () => {
             setIsLoading(true);
 
             const promises = snapshotModels.map(async (model) => {
-                const modelId = model.database_id || '';
+                const modelId = model.database_id || model.database_name || '';
                 if (!modelId) return;
                 const modelTemp = tempSnapshot[modelId] ?? defaultTemperature;
 
@@ -407,7 +443,7 @@ export const MultiModelChatPage = () => {
      * Re-run a specific model
      */
     const rerunModel = async (turnId: string, model: LLMModel) => {
-        const modelId = model.database_id || '';
+        const modelId = model.database_id || model.database_name || '';
         if (!modelId) return;
         const turn = turns.find((t) => t.id === turnId);
         if (!turn) return;
@@ -496,11 +532,31 @@ export const MultiModelChatPage = () => {
         }
     };
 
+    const removeModel = (modelId: string) => {
+        setSelectedModels((prev) =>
+            prev.filter((m) => (m.database_id || m.database_name) !== modelId)
+        );
+        setModelTemperatures((prev) => {
+            const next = { ...prev };
+            delete next[modelId];
+            return next;
+        });
+        // Also remove from all existing turns to hide from view
+        setTurns((prev) =>
+            prev.map((t) => ({
+                ...t,
+                selectedModels: t.selectedModels.filter(
+                    (m) => (m.database_id || m.database_name) !== modelId
+                ),
+            }))
+        );
+    };
+
     const generateBestResponse = async (turnId: string) => {
         const turn = turns.find((t) => t.id === turnId);
         if (!turn) return;
 
-        const completed = Object.values(turn.modelResponses).filter(
+        const completed = (Object.values(turn.modelResponses) as ModelResponse[]).filter(
             (r) => !!r.response && !r.isLoading && !r.error
         );
 
@@ -660,7 +716,7 @@ export const MultiModelChatPage = () => {
                     />
                 )}
 
-                <StyledComparisonContainer>
+                <StyledComparisonContainer sidebarOpen={sidebarOpen}>
                     {turns.length > 0 ? (
                         <Stack spacing={3} sx={{ minWidth: '100%', direction: 'ltr' }}>
                             {turns.map((turn) => (
@@ -720,8 +776,8 @@ export const MultiModelChatPage = () => {
                                     )}
 
                                     <StyledPanelsRow>
-                                        {turn.selectedModels.map((model) => {
-                                            const modelId = model.database_id || '';
+                                        {turn.selectedModels.map((model, index) => {
+                                            const modelId = model.database_id || model.database_name || `model-${index}`;
                                             const modelResponse = turn.modelResponses[modelId] || {
                                                 model,
                                                 response: null,
@@ -743,6 +799,7 @@ export const MultiModelChatPage = () => {
                                                     error={modelResponse.error}
                                                     onCopy={() => setCopySuccess(true)}
                                                     onRerun={() => rerunModel(turn.id, model)}
+                                                    onClose={() => removeModel(modelId)}
                                                 />
                                             );
                                         })}
@@ -773,7 +830,7 @@ export const MultiModelChatPage = () => {
                     )}
                 </StyledComparisonContainer>
 
-                <StyledInputContainer>
+                <StyledInputContainer sidebarOpen={sidebarOpen}>
                     {error && (
                         <Alert
                             severity="error"

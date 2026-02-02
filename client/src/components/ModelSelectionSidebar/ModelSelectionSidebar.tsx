@@ -89,12 +89,13 @@ export const ModelSelectionSidebar = ({
 
             <FormGroup>
                 {availableModels.map((model: LLMModel) => {
+                    const modelId = model.database_id || model.database_name || '';
                     const isSelected = selectedModels.some(
-                        (m: LLMModel) => m.database_id === model.database_id
+                        (m: LLMModel) => (m.database_id || m.database_name) === modelId
                     );
                     return (
                         <FormControlLabel
-                            key={model.database_id}
+                            key={modelId}
                             control={
                                 <input
                                     type="checkbox"
@@ -109,8 +110,8 @@ export const ModelSelectionSidebar = ({
                                             setSelectedModels(
                                                 selectedModels.filter(
                                                     (m: LLMModel) =>
-                                                        m.database_id !==
-                                                        model.database_id
+                                                        (m.database_id || m.database_name) !==
+                                                        modelId
                                                 )
                                             );
                                         }
@@ -168,17 +169,18 @@ export const ModelSelectionSidebar = ({
                     <StyledSectionTitle variant="subtitle2">
                         Per-Model Temperature (Optional)
                     </StyledSectionTitle>
-                    {selectedModels.map((model: LLMModel) => {
+                    {selectedModels.map((model: LLMModel, index: number) => {
+                        const modelId = model.database_id || model.database_name || `model-${index}`;
                         const modelTemp =
-                            modelTemperatures[model.database_id || ''] ??
+                            modelTemperatures[modelId] ??
                             defaultTemperature;
                         return (
-                            <Box key={model.database_id} sx={{ mb: 2 }}>
+                            <Box key={modelId} sx={{ mb: 2 }}>
                                 <Typography
                                     variant="caption"
                                     sx={{ display: 'block', mb: 0.5 }}
                                 >
-                                    {model.database_name}
+                                    {model.database_name || 'Unknown Model'}
                                 </Typography>
                                 <Slider
                                     value={modelTemp}
@@ -191,7 +193,7 @@ export const ModelSelectionSidebar = ({
                                     onChange={(event, newValue) => {
                                         setModelTemperatures({
                                             ...modelTemperatures,
-                                            [model.database_id || '']: newValue as number,
+                                            [modelId]: newValue as number,
                                         });
                                     }}
                                 />
