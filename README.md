@@ -1,4 +1,4 @@
-## MultiModelChat (MultiChatBot)
+### MultiModelChat (MultiChatBot)
 
 MultiModelChat lets you compare multiple Large Language Models (LLMs) side‑by‑side, tune them, and synthesize the best answer. The app is a React front‑end that talks to the Semoss platform for authentication, cataloging available engines, and running Pixel commands against configured LLM backends.
 
@@ -15,6 +15,7 @@ MultiModelChat lets you compare multiple Large Language Models (LLMs) side‑by�
 - Copy / re‑run per model; stop all generations.
 - Auth flows (native + Microsoft OAuth via Semoss config).
 - Built with Material UI, so the layout is responsive and readable.
+- "Pro Prompt" feature that allows user to feed more fine-tuned prompt to llm models.(Currently in Beta version)
 
 ### Architecture overview
 - **Frontend:** React + TypeScript, Material UI, `@semoss/sdk`/`@semoss/sdk-react`.
